@@ -44,8 +44,7 @@ private:
     // Data structure to match the command signature used for ExecuteIndirect.
     struct IndirectCommand
     {
-        //D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
-        D3D12_DRAW_ARGUMENTS drawArguments;
+        D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
         UINT padding;
     };
 
@@ -70,6 +69,9 @@ private:
     // App resources.
     ComPtr<ID3D12Resource> m_vertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+
+    ComPtr<ID3D12Resource> m_indexBuffer;
+    D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 
     // Synchronization objects.
     UINT m_frameIndex;

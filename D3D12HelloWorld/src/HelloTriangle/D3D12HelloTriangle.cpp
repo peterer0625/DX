@@ -153,8 +153,7 @@ void D3D12HelloTriangle::LoadAssets()
     {
         // Each command consists of a DrawInstanced call.
         D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[1] = {};
-        //argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
-        argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+        argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
 
         D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
         commandSignatureDesc.pArgumentDescs = argumentDescs;
@@ -219,7 +218,8 @@ void D3D12HelloTriangle::LoadAssets()
         {
             { { 0.0f, 0.25f * m_aspectRatio, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
             { { 0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-            { { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+            { { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+            { { 0.0f, -0.5f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f, 0.0f, 1.0f } },
         };
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
@@ -249,13 +249,47 @@ void D3D12HelloTriangle::LoadAssets()
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
+    // Create the index buffer.
+    {
+        UINT32 triangleIndexes[] =
+        {
+            0, 1, 2, 3
+        };
+
+        const UINT indexBufferSize = sizeof(triangleIndexes);
+
+        // Note: using upload heaps to transfer static data like vert buffers is not 
+        // recommended. Every time the GPU needs it, the upload heap will be marshalled 
+        // over. Please read up on Default Heap usage. An upload heap is used here for 
+        // code simplicity and because there are very few verts to actually transfer.
+        ThrowIfFailed(m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_indexBuffer)));
+
+        UINT8* pDataBegin;
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        ThrowIfFailed(m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pDataBegin)));
+        memcpy(pDataBegin, triangleIndexes, sizeof(triangleIndexes));
+        m_indexBuffer->Unmap(0, nullptr);
+
+        // Initialize the index buffer view.
+        m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
+        m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+        m_indexBufferView.SizeInBytes = indexBufferSize;
+    }
+
     {
         // Map/Unmap command data to m_commandBuffer
         IndirectCommand command;
-        command.drawArguments.VertexCountPerInstance = 3;
+        command.drawArguments.IndexCountPerInstance = 4;
         command.drawArguments.InstanceCount = 1;
-        command.drawArguments.StartVertexLocation = 0;
+        command.drawArguments.StartIndexLocation = 0;
         command.drawArguments.StartInstanceLocation = 0;
+        command.drawArguments.BaseVertexLocation = 0;
 
         int commandBufferSize = sizeof(command);
 
@@ -352,9 +386,10 @@ void D3D12HelloTriangle::PopulateCommandList()
     // Record commands.
     const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-    //m_commandList->DrawInstanced(3, 1, 0, 0);
+    m_commandList->IASetIndexBuffer(&m_indexBufferView);
+
     m_commandList->ExecuteIndirect(
         m_commandSignature.Get(),
         1,
