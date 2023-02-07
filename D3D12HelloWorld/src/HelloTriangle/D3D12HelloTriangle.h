@@ -41,6 +41,14 @@ private:
         XMFLOAT4 color;
     };
 
+    // Data structure to match the command signature used for ExecuteIndirect.
+    struct IndirectCommand
+    {
+        //D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
+        D3D12_DRAW_ARGUMENTS drawArguments;
+        UINT padding;
+    };
+
     // Pipeline objects.
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
@@ -54,6 +62,10 @@ private:
     ComPtr<ID3D12PipelineState> m_pipelineState;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
     UINT m_rtvDescriptorSize;
+
+    // For command related on indirect drawing
+    ComPtr<ID3D12CommandSignature> m_commandSignature;
+    ComPtr<ID3D12Resource> m_commandBuffer;
 
     // App resources.
     ComPtr<ID3D12Resource> m_vertexBuffer;

@@ -146,6 +146,23 @@ void D3D12HelloTriangle::LoadAssets()
         ComPtr<ID3DBlob> error;
         ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
         ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
+        NAME_D3D12_OBJECT(m_rootSignature);
+    }
+
+    // Create the command signature used for indirect drawing.
+    {
+        // Each command consists of a DrawInstanced call.
+        D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[1] = {};
+        //argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+        argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+
+        D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
+        commandSignatureDesc.pArgumentDescs = argumentDescs;
+        commandSignatureDesc.NumArgumentDescs = _countof(argumentDescs);
+        commandSignatureDesc.ByteStride = sizeof(IndirectCommand);
+
+        ThrowIfFailed(m_device->CreateCommandSignature(&commandSignatureDesc, nullptr, IID_PPV_ARGS(&m_commandSignature)));
+        NAME_D3D12_OBJECT(m_commandSignature);
     }
 
     // Create the pipeline state, which includes compiling and loading shaders.
@@ -232,6 +249,34 @@ void D3D12HelloTriangle::LoadAssets()
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
+    {
+        // Map/Unmap command data to m_commandBuffer
+        IndirectCommand command;
+        command.drawArguments.VertexCountPerInstance = 3;
+        command.drawArguments.InstanceCount = 1;
+        command.drawArguments.StartVertexLocation = 0;
+        command.drawArguments.StartInstanceLocation = 0;
+
+        int commandBufferSize = sizeof(command);
+
+        ThrowIfFailed(m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(commandBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_commandBuffer)));
+
+        UINT8* pDataBegin;
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        ThrowIfFailed(m_commandBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pDataBegin)));
+        memcpy(pDataBegin, &command, sizeof(command));
+        m_commandBuffer->Unmap(0, nullptr);
+
+        ThrowIfFailed(m_commandBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pDataBegin)));
+        m_commandBuffer->Unmap(0, nullptr);
+    }
+
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -309,7 +354,14 @@ void D3D12HelloTriangle::PopulateCommandList()
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-    m_commandList->DrawInstanced(3, 1, 0, 0);
+    //m_commandList->DrawInstanced(3, 1, 0, 0);
+    m_commandList->ExecuteIndirect(
+        m_commandSignature.Get(),
+        1,
+        m_commandBuffer.Get(),
+        0,
+        nullptr,
+        0);
 
     // Indicate that the back buffer will now be used to present.
     m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
